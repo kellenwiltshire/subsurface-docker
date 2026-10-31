@@ -57,13 +57,13 @@ ENV LC_ALL=C.UTF-8
 WORKDIR /src
 
 ARG SUBSURFACE_REPO=https://github.com/subsurface/subsurface.git
-ARG SUBSURFACE_REF=master
+ARG SUBSURFACE_REF=0d61c91352ffc5da15e7eed6d870d97baab107cf
 
-RUN git clone \
-  --depth 1 \
-  --branch "${SUBSURFACE_REF}" \
-  "${SUBSURFACE_REPO}" \
-  /src/subsurface
+RUN git init /src/subsurface && \
+  git -C /src/subsurface remote add origin "${SUBSURFACE_REPO}" && \
+  git -C /src/subsurface fetch --depth 1 origin "${SUBSURFACE_REF}" && \
+  git -C /src/subsurface checkout FETCH_HEAD && \
+  git -C /src/subsurface submodule update --init --recursive
 
 RUN ./subsurface/scripts/build.sh \
   -desktop \

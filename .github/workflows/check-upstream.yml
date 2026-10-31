@@ -1,0 +1,114 @@
+name: Check upstream Subsurface release
+
+on:
+  schedule:
+    - cron: "17 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-upstream:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install GitHub CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gh
+
+      - name: Check for upstream release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          RELEASE=$(gh release view \
+            --repo subsurface/nightly-builds \
+            --json tagName,name,body,publishedAt)
+
+          TAG=$(jq -r '.tagName' <<< "$RELEASE")
+          BODY=$(jq -r '.body' <<< "$RELEASE")
+
+          PR_NUMBER=$(grep -oP 'merging pull request \K[0-9]+' <<< "$BODY" | head -n1)
+
+          if [[ -z "$PR_NUMBER" ]]; then
+            echo "Could not identify upstream PR in release notes."
+            exit 1
+          fi
+
+          COMMIT=$(gh pr view "$PR_NUMBER" \
+            --repo subsurface/subsurface \
+            --json mergeCommit \
+            --jq '.mergeCommit.oid')
+
+          if [[ -z "$COMMIT" || "$COMMIT" == "null" ]]; then
+            echo "Could not resolve upstream merge commit."
+            exit 1
+          fi
+
+          echo "Release: $TAG"
+          echo "PR: #$PR_NUMBER"
+          echo "Commit: $COMMIT"
+
+          CURRENT=$(grep '^ARG SUBSURFACE_REF=' Dockerfile | cut -d= -f2)
+
+          if [[ "$CURRENT" == "$COMMIT" ]]; then
+            echo "Already tracking this upstream commit."
+            exit 0
+          fi
+
+          sed -i "s|^ARG SUBSURFACE_REF=.*|ARG SUBSURFACE_REF=$COMMIT|" Dockerfile
+
+          echo "UPSTREAM_RELEASE=$TAG" >> "$GITHUB_ENV"
+          echo "UPSTREAM_COMMIT=$COMMIT" >> "$GITHUB_ENV"
+          echo "UPSTREAM_PR=$PR_NUMBER" >> "$GITHUB_ENV"
+
+      - name: Create or update pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- Dockerfile; then
+            echo "No Dockerfile changes to propose."
+            exit 0
+          fi
+
+          BRANCH="upstream-update-${UPSTREAM_RELEASE}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout -B "$BRANCH"
+          git add Dockerfile
+          git commit -m "chore: update Subsurface to ${UPSTREAM_RELEASE}"
+          git push --force origin "$BRANCH"
+
+          EXISTING_PR=$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --head "$BRANCH" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')
+
+          if [[ -z "$EXISTING_PR" ]]; then
+            gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --base main \
+              --head "$BRANCH" \
+              --title "Update Subsurface to ${UPSTREAM_RELEASE}" \
+              --body "Updates the Docker image to official Subsurface release ${UPSTREAM_RELEASE}.
+
+          - Upstream PR: subsurface/subsurface#${UPSTREAM_PR}
+          - Upstream commit: \`${UPSTREAM_COMMIT}\`
+
+          Merge this PR to build and publish the updated Docker image."
+          else
+            echo "Updated existing PR #$EXISTING_PR"
+          fi
