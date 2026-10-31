@@ -2,7 +2,7 @@ name: Check upstream Subsurface release
 
 on:
   schedule:
-    - cron: "17 8 * * *"
+    - cron: "* 8 * * *"
   workflow_dispatch:
 
 permissions:
