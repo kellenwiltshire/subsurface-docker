@@ -1,163 +1,169 @@
-# Subsurface Docker (Browser-Based Desktop)
+# Subsurface Docker
 
-This Docker image runs the Subsurface desktop application in a virtual desktop environment accessible through a web browser.
+Run [Subsurface](https://subsurface-divelog.org/), the open-source dive log, in your browser using Docker.
 
-It uses Xvfb to provide a virtual X11 display, Openbox as the window manager, and noVNC to make the desktop accessible through a browser. The application itself remains the standard Subsurface desktop application.
+This project packages the Subsurface desktop application in a lightweight Linux container and provides browser access through noVNC. You don't need to install Subsurface or a desktop environment on your computer.
+
+**This is an independent, community-maintained Docker deployment. It is not an official Subsurface project or an officially supported distribution.**
 
 ## Features
 
 - Browser-based access to the Subsurface desktop application.
-- Qt6-based application build.
-- Lightweight multi-stage Docker image.
-- Runs as a non-root user.
-- Persistent storage for dive logs and application configuration.
-- Software rendering; no GPU required.
-- noVNC access through a web browser.
+- Based on the official Subsurface upstream source code.
+- Qt 6 desktop build.
+- Persistent application configuration and dive data.
+- Runs as a non-root user inside the container.
+- Automated Docker image builds and publishing through GitHub Actions.
+- Published images available through GitHub Container Registry (GHCR).
 
-## Requirements
+## Quick start
 
-- Docker with support for multi-stage builds.
-- An x86-64 (AMD64) host.
-- A modern web browser.
+The easiest way to run Subsurface is with Docker Compose.
 
-## Building the image
-
-Clone the Subsurface repository and build the image from the repository root:
-
-```bash
-docker build \
-  -f packaging/docker/Dockerfile \
-  -t subsurface-web .
+```yaml
+services:
+  subsurface:
+    image: ghcr.io/kellenwiltshire/subsurface-docker:latest
+    container_name: subsurface
+    restart: unless-stopped
+    ports:
+      - "6080:6080"
+    volumes:
+      - ./data:/data
+      - ./config:/home/subsurface
 ```
 
-The build compiles Subsurface from source and creates a separate runtime image containing the application and its required dependencies.
-
-## Running the container
-
-Create and start the container:
+Start the container:
 
 ```bash
-docker run -d \
-  --name subsurface-web \
-  --restart unless-stopped \
-  -p 127.0.0.1:6080:6080 \
-  -v subsurface-data:/data \
-  -v subsurface-config:/home/subsurface \
-  subsurface-web
+docker compose up -d
 ```
 
-This example uses named Docker volumes to persist dive data and application configuration across container restarts and replacements.
+Open the application in your browser:
 
-### Accessing Subsurface
+[http://localhost:6080](http://localhost:6080)
 
-Open the following URL in your browser:
+The first startup may take a little longer while the desktop environment initializes.
+
+## Persistent storage
+
+Two directories are mounted into the container:
+
+| Container path     | Purpose                                            |
+| ------------------ | -------------------------------------------------- |
+| `/data`            | Persistent application data and dive-related files |
+| `/home/subsurface` | User configuration and application settings        |
+
+Both directories should be persisted outside the container so that your data and configuration survive container updates and recreation.
+
+### Permissions
+
+The application runs as a non-root user:
+
+- UID: `10001`
+- GID: `10001`
+
+When using bind mounts, ensure the host directories are writable by this user.
+
+For example:
+
+```bash
+sudo chown -R 10001:10001 ./data ./config
+```
+
+Dockerfile ownership settings do not automatically change the ownership of host directories mounted into the container.
+
+## Docker image
+
+Images are published to GitHub Container Registry:
 
 ```text
-http://localhost:6080/vnc.html
+ghcr.io/kellenwiltshire/subsurface-docker
 ```
 
-The Subsurface desktop should appear in the browser.
+Available tags:
 
-### Storage
+| Tag      | Description                                     |
+| -------- | ----------------------------------------------- |
+| `latest` | Latest successful build from the default branch |
+| `1.0.0`  | Specific Docker project release                 |
+| `1.0`    | Latest patch release within a minor version     |
+| `1`      | Latest minor release within a major version     |
 
-Two directories should be persisted:
+Replace `latest` with a specific version tag if you prefer to control upgrades.
 
-| Container path     | Purpose                                 |
-| ------------------ | --------------------------------------- |
-| `/data`            | Dive log storage                        |
-| `/home/subsurface` | Application configuration and user data |
+## Building locally
 
-The container automatically opens `/data/divelog.ssrf` when that file exists.
-
-If using bind mounts instead of named volumes, ensure the host directories are writable by the container user (UID `10001`).
-
-## Updating
-
-To update the application, pull or check out the desired Subsurface source revision and rebuild the image:
+Clone this repository:
 
 ```bash
-docker build \
-  -f packaging/docker/Dockerfile \
-  -t subsurface-web .
+git clone https://github.com/kellenwiltshire/subsurface-docker.git
+cd subsurface-docker
 ```
 
-Stop and remove the existing container:
+Build the image:
 
 ```bash
-docker stop subsurface-web
-docker rm subsurface-web
+docker build -t subsurface-docker:latest .
 ```
 
-Start the updated image using the same volume configuration:
+Run it:
 
 ```bash
 docker run -d \
-  --name subsurface-web \
-  --restart unless-stopped \
-  -p 127.0.0.1:6080:6080 \
-  -v subsurface-data:/data \
-  -v subsurface-config:/home/subsurface \
-  subsurface-web
+  --name subsurface \
+  -p 6080:6080 \
+  -v ./data:/data \
+  -v ./config:/home/subsurface \
+  subsurface-docker:latest
 ```
 
-The named volumes retain their contents when the container is removed.
+### Upstream source
 
-It is recommended to back up your dive logs before upgrading.
+The Docker build retrieves the Subsurface source directly from the official upstream repository:
 
-## Limitations
+https://github.com/subsurface/subsurface
 
-### Hardware access
-
-The initial Docker deployment does not provide USB or Bluetooth passthrough.
-
-Direct communication with dive computers connected to the Docker host is therefore not supported. Importing dive data through supported file-based workflows remains possible.
-
-### Graphics and rendering
-
-The desktop runs using Xvfb and software rendering.
-
-No GPU is required, but rendering performance may differ from a native desktop installation.
-
-### Browser access and security
-
-The noVNC interface provides access to the complete Subsurface desktop session.
-
-The VNC server does not require a password and listens only on the container's loopback interface. The browser interface is exposed on port `6080`.
-
-The example Docker command binds the interface to `127.0.0.1` on the host, making it accessible only from the host itself.
-
-**Do not expose port `6080` directly to the public internet.**
-
-For remote access, use an appropriately secured VPN or an authenticated HTTPS reverse proxy.
-
-### Architecture
-
-The current Qt plugin configuration targets x86-64 Linux (`x86_64-linux-gnu`). Other architectures are not currently supported by this Docker configuration.
-
-## Troubleshooting
-
-### Cannot access the browser interface
-
-Check that the container is running:
+The upstream repository and revision can be overridden using build arguments:
 
 ```bash
-docker ps
+docker build \
+  --build-arg SUBSURFACE_REF=master \
+  -t subsurface-docker:latest .
 ```
 
-Check the container logs:
+## Architecture and limitations
 
-```bash
-docker logs subsurface-web
-```
+This deployment runs the Subsurface desktop application inside a virtual X11 desktop, which is streamed to the browser using noVNC.
 
-Confirm that port `6080` is mapped correctly.
+Current limitations:
 
-### Application fails to start
+- USB device passthrough is not supported.
+- Bluetooth device passthrough is not supported.
+- The desktop uses software rendering.
+- The image currently targets AMD64/x86-64.
 
-Inspect the container logs for missing libraries, Qt plugin errors, or virtual display startup failures.
+Subsurface features that depend on direct access to hardware connected to the host may therefore be unavailable.
 
-### Dive logs or settings are missing
+## Security
 
-Verify that both `/data` and `/home/subsurface` are mounted to persistent storage.
+The browser interface is exposed on port `6080`.
 
-Removing a container without persistent volumes can result in data loss.
+**There is no built-in authentication on the noVNC interface.** Do not expose this port directly to the public internet.
+
+For remote access, use a trusted private network such as Tailscale, or put the service behind an appropriately authenticated reverse proxy.
+
+## Project status
+
+This is an independently maintained Docker packaging project. The application itself is built from the official Subsurface source repository.
+
+- Docker packaging and deployment issues: [Open an issue](https://github.com/kellenwiltshire/subsurface-docker/issues)
+- Upstream Subsurface application: [subsurface/subsurface](https://github.com/subsurface/subsurface)
+
+Contributions and suggestions are welcome.
+
+## License
+
+Subsurface is licensed under the GNU General Public License. See the upstream repository for its licensing information.
+
+This repository's Docker-specific files are distributed under the license specified in this repository.
