@@ -1,0 +1,5 @@
+/build
+/install-root
+*.o
+*.a
+*.so
