@@ -57,7 +57,7 @@ ENV LC_ALL=C.UTF-8
 WORKDIR /src
 
 ARG SUBSURFACE_REPO=https://github.com/subsurface/subsurface.git
-ARG SUBSURFACE_REF=0d61c91352ffc5da15e7eed6d870d97baab107cf
+ARG SUBSURFACE_REF=d75ec529f19352bc7eac517f6a859b73a4d2bfc8
 
 RUN git init /src/subsurface && \
   git -C /src/subsurface remote add origin "${SUBSURFACE_REPO}" && \
