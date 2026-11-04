@@ -91,9 +91,8 @@ jobs:
               --base main \
               --head "$BRANCH" \
               --title "Update Subsurface to ${UPSTREAM_RELEASE}" \
-              --body "Updates the Docker image to official Subsurface release ${UPSTREAM_RELEASE}.
+              --body "Updates the Docker image to upstream Subsurface release ${UPSTREAM_RELEASE}.
 
-          - Upstream PR: subsurface/subsurface#${UPSTREAM_PR}
           - Upstream commit: \`${UPSTREAM_COMMIT}\`
 
           Merge this PR to build and publish the updated Docker image."
