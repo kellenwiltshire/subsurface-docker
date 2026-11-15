@@ -59,16 +59,24 @@ jobs:
 
       - name: Create or update pull request
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A repository token is needed here because GITHUB_TOKEN-triggered
+          # pushes do not start the pull_request workflow checks.
+          GH_TOKEN: ${{ secrets.UPSTREAM_PR_TOKEN }}
         run: |
           set -euo pipefail
+
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "Missing UPSTREAM_PR_TOKEN secret. Add a token with contents:write and pull-requests:write permissions."
+            exit 1
+          fi
 
           if git diff --quiet -- Dockerfile; then
             echo "No Dockerfile changes to propose."
             exit 0
           fi
 
-          BRANCH="upstream-update-${UPSTREAM_RELEASE}"
+          # Keep one long-lived PR branch so each run updates the same PR.
+          BRANCH="upstream-update"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -97,5 +105,13 @@ jobs:
 
           Merge this PR to build and publish the updated Docker image."
           else
+            gh pr edit "$EXISTING_PR" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Update Subsurface to ${UPSTREAM_RELEASE}" \
+              --body "Updates the Docker image to upstream Subsurface release ${UPSTREAM_RELEASE}.
+
+          - Upstream commit: \`${UPSTREAM_COMMIT}\`
+
+          Merge this PR to build and publish the updated Docker image."
             echo "Updated existing PR #$EXISTING_PR"
           fi
